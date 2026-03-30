@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import useSWR, { mutate } from 'swr'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -14,6 +14,7 @@ import { StatPanel } from './stat-panel'
 import { ProgressForm } from './progress-form'
 import { AIInsightCard } from './ai-insight-card'
 import { WeeklyScheduleGrid } from './weekly-schedule-grid'
+import { StudyChart } from './study-chart'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
@@ -37,47 +38,61 @@ interface WarRoomDashboardProps {
   displayName?: string
 }
 
-// Generate demo activity data
-function generateDemoActivityData(): DayActivity[] {
-  const data: DayActivity[] = []
-  const today = new Date()
-  
-  for (let i = 90; i >= 0; i--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
-    
-    // Generate random activity with realistic patterns
-    const dayOfWeek = date.getDay()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    const baseChance = isWeekend ? 0.5 : 0.7
-    const hasActivity = Math.random() < baseChance
-    
-    const hours = hasActivity 
-      ? Math.round((Math.random() * 6 + (isWeekend ? 1 : 2)) * 10) / 10 
-      : 0
-    
-    const level = hours === 0 ? 0 
-      : hours < 2 ? 1 
-      : hours < 4 ? 2 
-      : hours < 6 ? 3 
-      : 4
-
-    data.push({
-      date: date.toISOString().split('T')[0],
-      hours,
-      level: level as 0 | 1 | 2 | 3 | 4,
-    })
-  }
-  
-  return data
-}
-
 export function WarRoomDashboard({ userId, displayName }: WarRoomDashboardProps) {
   const supabase = createClient()
-  const [activityData, setActivityData] = useState<DayActivity[]>([])
   const [isSubmittingProgress, setIsSubmittingProgress] = useState(false)
   const [isGeneratingInsight, setIsGeneratingInsight] = useState(false)
   const [activeView, setActiveView] = useState<'schedule' | 'analytics'>('schedule')
+
+  // Fetch real progress for the last 90 days
+  const { data: rawProgress = [], mutate: mutateProgress } = useSWR<Progress[]>(
+    `progress-${userId}`,
+    async () => {
+      const ninetyDaysAgo = new Date()
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
+      const { data, error } = await supabase
+        .from('progress')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('date', ninetyDaysAgo.toISOString().split('T')[0])
+        .order('date', { ascending: true })
+
+      if (error) throw error
+      return data || []
+    }
+  )
+
+  // Compute Activity Grid Data from real progress
+  const activityData = useMemo(() => {
+    const dataMap = new Map<string, number>()
+    rawProgress.forEach(p => {
+      dataMap.set(p.date, p.hours_studied)
+    })
+
+    const data: DayActivity[] = []
+    const today = new Date()
+    
+    for (let i = 90; i >= 0; i--) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
+      const hours = dataMap.get(dateStr) || 0
+      
+      const level = hours === 0 ? 0 
+        : hours < 2 ? 1 
+        : hours < 4 ? 2 
+        : hours < 6 ? 3 
+        : 4
+
+      data.push({
+        date: dateStr,
+        hours: Math.round(hours * 10) / 10,
+        level: level as 0 | 1 | 2 | 3 | 4,
+      })
+    }
+    return data
+  }, [rawProgress])
 
   // Fetch missions
   const { data: missions = [], mutate: mutateMissions } = useSWR<Mission[]>(
@@ -133,10 +148,6 @@ export function WarRoomDashboard({ userId, displayName }: WarRoomDashboardProps)
     }
   )
 
-  // Initialize activity data
-  useEffect(() => {
-    setActivityData(generateDemoActivityData())
-  }, [])
 
   // Add new mission
   const handleAddMission = useCallback(async (title: string, priority: Mission['priority']) => {
@@ -189,24 +200,8 @@ export function WarRoomDashboard({ userId, displayName }: WarRoomDashboardProps)
         })
 
       if (!error) {
-        // Update activity data
-        setActivityData((prev) => {
-          const newData = [...prev]
-          const todayIndex = newData.findIndex((d) => d.date === today)
-          if (todayIndex >= 0) {
-            const level = data.hours === 0 ? 0 
-              : data.hours < 2 ? 1 
-              : data.hours < 4 ? 2 
-              : data.hours < 6 ? 3 
-              : 4
-            newData[todayIndex] = {
-              date: today,
-              hours: data.hours,
-              level: level as 0 | 1 | 2 | 3 | 4,
-            }
-          }
-          return newData
-        })
+        // Re-fetch progress to update the charts automatically
+        mutateProgress()
 
         // Refresh stats
         mutate(`weekly-stats-${userId}`)
@@ -330,9 +325,12 @@ export function WarRoomDashboard({ userId, displayName }: WarRoomDashboardProps)
                   />
                 </div>
 
-                {/* Activity Grid */}
-                <div className="tactical-border rounded-lg p-4">
-                  <ActivityGrid data={activityData} />
+                {/* Charts Area */}
+                <div className="space-y-4">
+                  <StudyChart data={rawProgress} />
+                  <div className="tactical-border rounded-lg p-4 bg-card/20 backdrop-blur-sm">
+                    <ActivityGrid data={activityData} />
+                  </div>
                 </div>
 
                 {/* AI Insights */}

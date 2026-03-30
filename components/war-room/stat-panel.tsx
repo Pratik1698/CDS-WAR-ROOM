@@ -15,10 +15,17 @@ interface StatPanelProps {
 }
 
 const variantStyles = {
-  default: 'text-primary',
-  success: 'text-neon-green',
-  warning: 'text-neon-amber',
-  danger: 'text-neon-red',
+  default: 'text-primary drop-shadow-[0_0_5px_rgba(0,255,0,0.5)]',
+  success: 'text-neon-green drop-shadow-[0_0_8px_rgba(0,255,0,0.8)]',
+  warning: 'text-neon-amber drop-shadow-[0_0_8px_rgba(255,191,0,0.8)]',
+  danger: 'text-neon-red drop-shadow-[0_0_8px_rgba(255,0,0,0.8)]',
+}
+
+const variantGradients = {
+  default: 'from-primary/20',
+  success: 'from-neon-green/20',
+  warning: 'from-neon-amber/20',
+  danger: 'from-neon-red/20',
 }
 
 export function StatPanel({
@@ -33,14 +40,15 @@ export function StatPanel({
 }: StatPanelProps) {
   return (
     <div className={cn(
-      'tactical-border rounded-lg p-4 relative overflow-hidden group',
-      'hover:border-primary/40 transition-all duration-300',
+      'tactical-border rounded-xl p-4 relative overflow-hidden group bg-card/20 backdrop-blur-sm',
+      'hover:border-primary/60 hover:-translate-y-1 transition-all duration-300 hover:shadow-[0_0_15px_rgba(0,255,0,0.15)]',
       className
     )}>
       {/* Background glow effect */}
       <div className={cn(
-        'absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500',
-        'bg-gradient-to-br from-primary/5 to-transparent'
+        'absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-2xl pointer-events-none',
+        'bg-gradient-to-br to-transparent',
+        variantGradients[variant]
       )} />
 
       <div className="relative z-10">
